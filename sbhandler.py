@@ -7,6 +7,7 @@
 
 # Needed imports
 import numpy as np
+from math import pow
 import h5py
 
 def load_matlab_file(mat_file, variable_name): # Note the double return statement
@@ -103,8 +104,6 @@ def seqblock_parser(seqblock):
         else:
             seqblock_parsed.qscores.append(new_format)
     return seqblock_parsed     
-   
-    
 
 class CleanSeqBlock(): 
     """_summary_
@@ -125,3 +124,5 @@ class CleanSeqBlock():
         self.interp_consensus = 0;
         self.interp_mutations = 0;
     
+def pscore(Qscore): 
+    return pow(10, -(Qscore-33)/10)
