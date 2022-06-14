@@ -43,6 +43,10 @@ class DNA_SeqBlocks():
         x = self.h5py_object[self.data[0, number-1]][:, :] # //UNIQUE: 0th column because .mat file, align3 variable only has one row
         return np.transpose(x)
     
+    def get_target(self, number):
+        x = self.h5py_object[self.data[0, number-1]][:, 0]
+        return np.transpose(x)
+    
     def get_coverage_count(self, number):
         """Coverage count
 
@@ -56,8 +60,10 @@ class DNA_SeqBlocks():
         coverage_count = int((len(x)-4)/2)
         return coverage_count
     
-    def get_barcode(self, number): #//TODO
+    def get_barcode(self, number): # //TODO: Ask Yiyang about a mutated stop codon.
         """Barcode finder
+        
+        Changes that need to be made: use target sequence to find stop codon (reads may have mutated stop codon like 22776). Use read that doesn't terminate in indels to find the barcode.
 
         Args:
             number (int): which sequence? matlab indexing
@@ -65,7 +71,7 @@ class DNA_SeqBlocks():
         Returns:
             barcode, true_len: returns barcode uint16 ndarray, last matlab idx of stop codon
         """
-        x = self.h5py_object[self.data[0, number-1]][:, 1]
+        x = self.h5py_object[self.data[0, number-1]][:, 0]
         barcode = ""
         true_len = 0
         total = x.size
@@ -73,26 +79,42 @@ class DNA_SeqBlocks():
         idx = 0
         search_stop=True
         
-        while idx < total and search_stop: # To identify the stop codon
-            if (np.all(x[idx:idx+6] == STOP_CODON)):  # Translates to 'TAATAG'
-                true_len = idx+6
-                search_stop = False
+        # This block is concise but had 2x the runtime
+        # while idx < total and search_stop: # To identify the stop codon
+        #     if (np.all(x[idx:idx+6] == STOP_CODON)):  # Translates to 'TAATAG'
+        #         true_len = idx+6
+        #         search_stop = False
+        #     idx += 1
+        
+        while idx < total and search_stop:
+            if (x[idx] == 84):
+                try:
+                    if (x[idx+1] == 65):
+                        if x[idx+2] == 65:
+                            if x[idx+3] == 84:
+                                if x[idx+4] == 65:
+                                    if x[idx+5] == 71:
+                                        true_len = idx+6
+                                        search_stop = False
+                except: 
+                    barcode = None
+                    true_len = 0
+                    return barcode, true_len
             idx += 1
-            
         barcode = x[true_len:total]
             
         return barcode, true_len
     
-    def get_quality(self, number, nuc_pos, coverage_count=0): # checked
+    def get_nuc_qscores(self, number, nuc_pos, coverage_count=0): # checked
         if coverage_count == 0:
             cov = self.get_coverage_count(number)
-            x = self.h5py_object[self.data[0, number-1]][nuc_pos, (1+cov):(1+2*cov)]
+            x = self.h5py_object[self.data[0, number-1]][nuc_pos-1, (1+cov):(1+2*cov)]
             return np.transpose(x)
         else:
-            x = self.h5py_object[self.data[0, number-1]][nuc_pos, (1+coverage_count):(1+2*coverage_count)]
+            x = self.h5py_object[self.data[0, number-1]][nuc_pos-1, (1+coverage_count):(1+2*coverage_count)]
             return np.transpose(x)
     
-    def get_nuc(self, number, nuc_pos, coverage_count=0): # checked
+    def get_nuc_reads(self, number, nuc_pos, coverage_count=0): # checked
         if coverage_count == 0:
             x = (self.h5py_object[self.data[0,number-1]][nuc_pos-1, 1:self.get_coverage_count(number)+1])
             return np.transpose(x)
@@ -100,30 +122,51 @@ class DNA_SeqBlocks():
             x = self.h5py_object[self.data[0,number-1]][nuc_pos-1, 1:(coverage_count+1)]
             return np.transpose(x)
     
-    def get_interp_changes(self, number, coverage_count=0): # checked
-        if coverage_count == 0:
-            x = self.h5py_object[self.data[0,number-1]][:,(1+2*self.get_coverage_count(number))]
+    def get_reads(self, number, coverage_count=0, true_len=0): # CHECK THE INDEXING
+        if coverage_count == 0 and true_len == 0:
+            _, true = self.get_barcode(number)
+            x = (self.h5py_object[self.data[0,number-1]][0:true, 1:self.get_coverage_count(number)+1])
             return np.transpose(x)
-        else:
-            x = self.h5py_object[self.data[0,number-1]][:,(1+2*coverage_count)]
+        else: 
+            x = self.h5py_object[self.data[0,number-1]][0:true_len, 1:(coverage_count+1)]
             return np.transpose(x)
     
-    def get_interp_mutations(self, number, coverage_count=0):
-        if coverage_count == 0:
-            x = self.h5py_object[self.data[0,number-1]][:,(3+2*self.get_coverage_count(number))]
+    def get_qscores(self, number, coverage_count=0, true_len=0):
+        if coverage_count == 0 and true_len == 0:
+            _, true = self.get_barcode(number)
+            cov = self.get_coverage_count(number)
+            x = (self.h5py_object[self.data[0,number-1]][0:true, (1+cov):(1+2*cov)])
+            return np.transpose(x)
+        else: 
+            x = self.h5py_object[self.data[0,number-1]][0:true_len, 1:(coverage_count+1)]
+            return np.transpose(x)        
+    
+    def get_interp_changes(self, number, coverage_count=0, true_len=0): # checked
+        if coverage_count == 0 and true_len == 0:
+            _, true = self.get_barcode(number)
+            x = self.h5py_object[self.data[0,number-1]][0:true,(1+2*self.get_coverage_count(number))]
             return np.transpose(x)
         else:
-            x = self.h5py_object[self.data[0,number-1]][:,(3+2*coverage_count)]     
+            x = self.h5py_object[self.data[0,number-1]][0:true_len,(1+2*coverage_count)]
+            return np.transpose(x)
+    
+    def get_interp_mutations(self, number, coverage_count=0, true_len=0):
+        if coverage_count == 0 and true_len == 0:
+            _,true=self.get_barcode(number)
+            x = self.h5py_object[self.data[0,number-1]][0:true,(3+2*self.get_coverage_count(number))]
+            return np.transpose(x)
+        else:
+            x = self.h5py_object[self.data[0,number-1]][0:true_len,(3+2*coverage_count)]     
             return np.transpose(x)      
     
-    def get_interp_consensus(self, number, coverage_count=0):
-        if coverage_count == 0:
-            x = self.h5py_object[self.data[0,number-1]][:,(2+2*self.get_coverage_count(number))]
+    def get_interp_consensus(self, number, coverage_count=0, true_len=0):
+        if coverage_count == 0 and true_len == 0:
+            _, true= self.get_barcode(number)
+            x = self.h5py_object[self.data[0,number-1]][0:true,(2+2*self.get_coverage_count(number))]
             return np.transpose(x) 
         else:
-            x = self.h5py_object[self.data[0,number-1]][:,(2+2*coverage_count)]
-            return np.transpose(x)
- 
+            x = self.h5py_object[self.data[0,number-1]][0:true_len,(2+2*coverage_count)]
+            return np.transpose(x) 
     
 def seqblock_parser(seqblock):
     seqblock_parsed = CleanSeqBlock()
