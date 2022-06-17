@@ -1,12 +1,19 @@
-# Needed imports
-from math import pow    
-import numpy as np
+# --------
+# Imports
+# --------
+from math import pow # Convenience   
+from Bio.Seq import Seq # Use Bio.Seq to translate() DNA sequences
+
+import numpy as np 
 import pandas as pd
-import h5py
+
+import h5py # Only to handle .mat dataset
 
 STOP_CODON = np.array([84, 65, 65, 84, 65, 71]) # T A A T A G
+linker = Seq('KLNPPDESGEF') # Used within get_br()
+linker_codlen = len(linker) # Used within get_br()
 
-# Source code for functions from seqblock_handler.py
+# Handling the .mat dataset
 def load_matlab_file(mat_file, variable_name): # Note the double return statement
     
     
@@ -25,7 +32,7 @@ def load_matlab_file(mat_file, variable_name): # Note the double return statemen
     data = np.array(data)
     return h5py_object, data
 
-# For quick conversions from ndarray object to ...
+# For quick conversions from ndarray object to_...
 def to_string(arr):
     string_seq = ""
     for i in arr:
@@ -37,11 +44,37 @@ def to_seq(targ, string=False):
         return Seq(targ)
     return Seq(to_string(targ))    
 
+# Used in two DNA_SeqBlocks() funcs: get_br(), br_splitter()
+def codon_to_nuc_idx(codon_idx, search_size): return (codon_idx+search_size)*3
+def parsed_targ(targ):
+    """Convert an np array of ord() DNA nucleotides with indels (45) to a string without indels. Also returns where the indels were.
+    Args:
+        targ (ndarray): get_target() function from DNA_SeqBlocks class
+    Returns:
+        cleaned_targ, indices_of_indels: Bio.Seq object without indels, nucleotide indices of where the indels were removed (maps to raw_targ)
+    """
+    indxs = np.where(targ==45)[0] # Dunno why they made it like this
+    return Seq(to_string(targ).replace("-", "")), indxs
+def rename(df, i, red=False, blue=False, transpose=False):
+    if transpose == True: df = df.T
+    cov = int(0.5*(df.columns.size-4))
+    based_on_cov = ['target']
+    based_on_cov.extend([f'read{i}' for i in range(1, cov+1)])
+    based_on_cov.extend(x for x in [f'q{i}' for i in range(1, cov+1)])
+    based_on_cov.extend(['changes', 'contig', 'mutations'])
+    df.columns = based_on_cov
+    if blue:
+        df.index.name = f'B{i}'
+    if red:
+        df.index.name = f'R{i}'
+    return df
+
 # To house main dataset
 class DNA_SeqBlocks():
     """Mat dataset 
     Loads the mat file with DNA sequences for easy iteration through all stored DNA sequence lists of varying coverage
     """
+    
     def __init__(self, h5py_object, data):
         """Initialize DNA_SeqBlocks() object
         Args:
@@ -261,91 +294,64 @@ class DNA_SeqBlocks():
             x = self.h5py_object[self.data[0,number-1]][0:true_len,(2+2*coverage_count)]
             return np.transpose(x) 
 
-# First four are dependecies of get_br()
-def codon_to_nuc_idx(codon_idx, search_size):
-    return (codon_idx+search_size)*3
+    def br_splitter(self, i): # Expects TRUELENS to be loaded
+        """Get nucIDX where BFP terminates and nucIDX where RFP begins. Uses a match with protein sequence of linker 
 
-def parsed_targ(targ):
-    """Convert an np array of ord() DNA nucleotides with indels (45) to a string without indels. Also returns where the indels were.
-    Args:
-        targ (ndarray): get_target() function from DNA_SeqBlocks class
-    Returns:
-        cleaned_targ, indices_of_indels: Bio.Seq object without indels, nucleotide indices of where the indels were removed (maps to raw_targ)
-    """
-    indxs = np.where(targ==45)[0] # Dunno why they made it like this
-    return Seq(to_string(targ).replace("-", "")), indxs
-            
-def br_splitter(i):
-    """Get nucIDX where BFP terminates and nucIDX where RFP begins. Uses a match with protein sequence of linker 
+        Args:
+            i (int): sb no. (MATLAB) 
+            Internal: Expects TRUELENS to be loaded
 
-    Args:
-        i (int): sb no. (MATLAB) 
-
-    Returns:
-        2 indices: nuc_idx where bfp ends, nuc_idx where rfp begins
-    """
-    raw_targ = (DNA_seqs.get_target(i, end=TRUELENS[i])) # give it less to search by specifying an end
-    
-    targ, indel_coords = parsed_targ(raw_targ) # Removes indels, converts target into a Bio.Seq object
+        Returns:
+            2 indices: nuc_idx where bfp ends, nuc_idx where rfp begins
+        """
+        raw_targ = (self.get_target(i, end=TRUELENS[i])) # give it less to search by specifying an end
         
-    p_targ = targ.translate()
-    idx = p_targ.find(linker) # Looks for the linker... but what if it can't find one?
-    if idx == -1:
-        return -1, -1
+        targ, indel_coords = parsed_targ(raw_targ) # Removes indels, converts target into a Bio.Seq object
+            
+        p_targ = targ.translate()
+        idx = p_targ.find(linker) # Looks for the linker... but what if it can't find one?
+        if idx == -1:
+            return -1, -1
 
-    codon_bfp_end = idx # right before where the linker idx is found
-    codon_rfp_beg = idx
+        codon_bfp_end = idx # right before where the linker idx is found
+        codon_rfp_beg = idx
+        
+        # Adjust based on indels
+        nuc_bfp_end = codon_bfp_end*3-1 # no need for displacement
+        nuc_rfp_beg = codon_to_nuc_idx( codon_rfp_beg, search_size=linker_codlen) # accounts for the + linker_codlen
     
-    # Adjust based on indels
-    nuc_bfp_end = codon_bfp_end*3-1 # no need for displacement
-    nuc_rfp_beg = codon_to_nuc_idx( codon_rfp_beg, search_size=linker_codlen) # accounts for the + linker_codlen
-   
-    # for BFP -> shift RFP as well
-    if len(indel_coords) != 0:
-        for n in indel_coords: # To find the true index... You have to add +1 to the found nuc_idx (final_idx) if an indel was previously in the range...
-            if n <= nuc_bfp_end:
-                nuc_bfp_end+=1
-                nuc_rfp_beg+=1
-            elif n <= nuc_rfp_beg: # only gets here if its bigger than nuc_bfp_end   
-                nuc_rfp_beg+=1
-    
-    return nuc_bfp_end, nuc_rfp_beg
+        # for BFP -> shift RFP as well
+        if len(indel_coords) != 0:
+            for n in indel_coords: # To find the true index... You have to add +1 to the found nuc_idx (final_idx) if an indel was previously in the range...
+                if n <= nuc_bfp_end:
+                    nuc_bfp_end+=1
+                    nuc_rfp_beg+=1
+                elif n <= nuc_rfp_beg: # only gets here if its bigger than nuc_bfp_end   
+                    nuc_rfp_beg+=1
+        
+        return nuc_bfp_end, nuc_rfp_beg
 
-def rename(df, i, red=False, blue=False, transpose=False):
-    if transpose == True: df = df.T
-    cov = int(0.5*(df.columns.size-4))
-    based_on_cov = ['target']
-    based_on_cov.extend([f'read{i}' for i in range(1, cov+1)])
-    based_on_cov.extend(x for x in [f'q{i}' for i in range(1, cov+1)])
-    based_on_cov.extend(['changes', 'contig', 'mutations'])
-    df.columns = based_on_cov
-    if blue:
-        df.index.name = f'B{i}'
-    if red:
-        df.index.name = f'R{i}'
-    return df
+    def get_br(self, i): # Expects TRUELENS to be loaded
+        """Gives the pd.DF objects that house the RFP and BFP for the specified ith seqblock
 
-def get_br(i):
-    """Gives the pd.DF objects that house the RFP and BFP for the specified ith seqblock
+        Args:
+            i (int): seqblock number
 
-    Args:
-        i (int): seqblock number
+        Returns:
+            BFP, RFP (pd.DataFrame): the parsed target with indices aligned to the target within the seqblock
+        """
+        b, r = self.br_splitter(i)
+        if b == -1:
+            return -1, -1
+        red_end = TRUELENS[i]
 
-    Returns:
-        BFP, RFP (pd.DataFrame): the parsed target with indices aligned to the target within the seqblock
-    """
-    b, r = br_splitter(i)
-    if b == -1:
-        return -1, -1
-    red_end = TRUELENS[i]
+        blue = pd.DataFrame(self.get_bluesb(i, blue_end=b, df=True))
+        blue = rename(blue, i, blue=True)
 
-    blue = pd.DataFrame(DNA_seqs.get_bluesb(i, blue_end=b, df=True))
-    blue = rename(blue, i, blue=True)
+        red = pd.DataFrame(self.get_redsb(i, red_start=r, red_end=red_end, df=True), index=np.arange(r, red_end))
+        red = rename(red, i, red=True)
 
-    red = pd.DataFrame(DNA_seqs.get_redsb(i, red_start=r, red_end=red_end, df=True), index=np.arange(r, red_end))
-    red = rename(red, i, red=True)
-
-    return blue, red
+        return blue, red
 
 # For conversions
 def pscore(Qscore): 
