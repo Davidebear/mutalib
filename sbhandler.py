@@ -20,8 +20,6 @@ BFP_NUCLEN = 708
 
 # Handling the .mat dataset
 def load_matlab_file(mat_file, variable_name): # Note the double return statement
-    
-    
     """_summary_
     //UNIQUE: Only one variable for this .mat file
     
@@ -51,16 +49,30 @@ def to_seq(targ, string=False):
 
 # Used in two DNA_SeqBlocks() funcs: get_br(), br_splitter()
 def codon_to_nuc_idx(codon_idx, search_size): return (codon_idx+search_size)*3
+
 def parsed_targ(targ):
     """Convert an np array of ord() DNA nucleotides with indels (45) to a string without indels. Also returns where the indels were.
     Args:
-        targ (ndarray): get_target() function from DNA_SeqBlocks class
+        targ (ndarray): get_target() output
     Returns:
-        cleaned_targ, indices_of_indels: Bio.Seq object without indels, nucleotide indices of where the indels were removed (maps to raw_targ)
+        cleaned_targ, indices_of_indels: removed indels, site of removal
     """
     indxs = (np.where(targ==45)[0]) # Dunno why they made it like this
     return Seq(to_string(targ).replace("-", "")), indxs
+
 def rename(df, i, red=False, blue=False, transpose=False):
+    """Syntatic sugar for BFP and RFP pd.DataFrame/s
+
+    Args:
+        df (pd.DataFrame): RFP or BFP-parsed seqblock in a df
+        i (int): seqblock number
+        red (bool, optional): Name as red. Defaults to False.
+        blue (bool, optional): Name as blue.. Defaults to False.
+        transpose (bool, optional): If transpose wasn't done previously. Defaults to False.
+
+    Returns:
+        df: Renamed df. Improved redability
+    """
     if transpose == True: df = df.T
     cov = int(0.5*(df.columns.size-4))
     based_on_cov = ['target']
@@ -68,10 +80,22 @@ def rename(df, i, red=False, blue=False, transpose=False):
     based_on_cov.extend(x for x in [f'q{i}' for i in range(1, cov+1)])
     based_on_cov.extend(['changes', 'contig', 'mutations'])
     df.columns = based_on_cov
-    if blue:
-        df.index.name = f'B{i}'
-    if red:
-        df.index.name = f'R{i}'
+    
+    to_name = ""
+    if cov < 10: to_name += f'0{cov}'
+    else: to_name += str(cov)
+    
+    if blue: to_name += 'B'
+    if red: to_name += 'R'
+    
+    if i < 10: to_name += f'-----{i}'
+    elif i < 100: to_name += f'----{i}'
+    elif i < 1000: to_name += f'---{i}'
+    elif i < 10_000: to_name += f'--{i}'
+    elif i < 100_000: to_name += f'-{i}'
+    else: to_name += f'{i}'
+    df.index.name = to_name
+    
     return df
 
 # To house main dataset
@@ -91,13 +115,29 @@ class DNA_SeqBlocks():
         self.size = len(data) 
         
     def get_seqblock(self, number, df=False): # Not really any reason to use this any longer 
+        """Grabs entire seqblock
+        """
         x = self.h5py_object[self.data[0, number-1]][:, :] # //UNIQUE: 0th column because .mat file, align3 variable only has one row
         if df:
             return x
         return np.transpose(x)
     
-    def get_redsb(self, number, red_start, red_end, df=False): # Used within get_br()
-        x = self.h5py_object[self.data[0, number-1]][red_start:red_end, :]
+    def get_redsb(self, number, red_start, red_end=-1, df=False): # Used within get_br()
+        """RFP start known. Get only the RFP
+
+        Args:
+            number (int): seqblock #
+            red_start (int): index to begin slice
+            red_end (int, optional): index to end slice. Defaults to -1.
+            df (bool, optional): Transpose not needed if going into a df. Defaults to False.
+
+        Returns:
+            h5py_object
+        """
+        if red_end == -1:
+            x = self.h5py_object[self.data[0, number-1]][red_start:, :]
+        else:
+            x = self.h5py_object[self.data[0, number-1]][red_start:red_end, :]
         if df:
             return x
         return np.transpose(x)
@@ -533,7 +573,7 @@ class DNA_SeqBlocks():
                 red = pd.DataFrame(self.get_redsb(i, red_start=r, red_end=red_end, df=True), index=np.arange(r, red_end))
             else:
                 insert = self.get_redsb(i, red_start=r, df=True)
-                red = pd.DataFrame(insert, index=np.arange(r, len(insert)))
+                red = pd.DataFrame(insert, index=np.arange(r, len(insert)+r))
             red = rename(red, i, red=True)
         else:
             red = pd.DataFrame(None)
