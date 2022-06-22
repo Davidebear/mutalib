@@ -1,3 +1,7 @@
+'''
+Ad hoc Python library made to handle ASSEMBLY MATRICES specific to Yiyang Gong's lab's MATLAB dataset
+@ Davidebear
+'''
 # --------
 # Imports
 # --------
