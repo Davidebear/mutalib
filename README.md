@@ -2,7 +2,7 @@
 
 _Summer 2022: NeuroToolBox project under Yiyang Gong, PhD (Gong Lab)_ <br>
 <br>
-Current Objective:  Understand the dataset. Figure out how to extract desired pieces
+Current Objective:  Extract information about indels
 
 ## Drivetrain Approach
 
