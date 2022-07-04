@@ -150,7 +150,7 @@ class DNA_SeqBlocks():
         x = self.h5py_object[self.data[0, number-1]][:blue_end+1, :]
         if df:
             return x
-        return np.tranpose(x)
+        return np.transpose(x)
     
     def get_target(self, number, end=-1): # Used within get_br()
         if end != -1:
