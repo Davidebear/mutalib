@@ -301,7 +301,7 @@ class DNA_SeqBlocks():
         if clean_targ.find("TAATAG") != -1:
             return 0 
         # This means there indeed is a indel_filled one
-        return 2 # Further processing TBD to determine if its a true or fake mutation. //TODO
+        return 2 # Further processing TBD to determine if its a true or fake mutation. 
     
     def missing_stop(self, number): # Returns True if at least one read does not have a stop codon
         """Check for missing stop codon
