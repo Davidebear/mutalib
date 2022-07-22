@@ -1,6 +1,7 @@
 '''
-Ad hoc Python library made to handle ASSEMBLY MATRICES specific to Yiyang Gong's lab's MATLAB dataset
+Ad hoc coding framework to handle ASSEMBLY MATRICES specific to mScarlet HiFi reads stored in MATLAB file `consensus1.mat`
 @ Davidebear
+Time: Summer '22
 '''
 # --------
 # Imports
